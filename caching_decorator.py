@@ -2,27 +2,33 @@ from collections import OrderedDict
 import functools
 
 
-def caching_decorator(
-        func,
-        _cache = OrderedDict(),  # упорядоченный словарь позволит управлять порядком удаления записей
-    ):
-    """
-    Кешируем результаты вызовов функций на основе её аргументов.
-    При индентичном повторном вызове возвращаем результат из кеша вместо повторного выполнения функции.
-    """
-    @functools.wraps(func)
-    def wrapper(*args):
-        if args in _cache.keys():  # если вызов уже в кеше, возвращаем кешированное значение
+def cache(_func=None, *, max_size=3):
+    def caching_decorator(
+            func,
+            _cache = OrderedDict(),  # упорядоченный словарь позволит управлять порядком удаления записей
+        ):
+        """
+        Кешируем результаты вызовов функций на основе её аргументов.
+        При индентичном повторном вызове возвращаем результат из кеша вместо повторного выполнения функции.
+        """
+        @functools.wraps(func)
+        def wrapper(*args):
+            if args in _cache.keys():  # если вызов уже в кеше, возвращаем кешированное значение
+                return _cache[args]
+            if len(_cache) == max_size:  # размер кеша снижен для простоты проверки
+                _cache.popitem(last=False)  # удаление старых записей в стиле FIFO
+            _cache[args] = func(*args)
+
             return _cache[args]
-        if len(_cache) == 3:  # размер кеша снижен для простоты проверки
-            _cache.popitem(last=False)  # удаление старых записей в стиле FIFO
-        _cache[args] = func(*args)
+        return wrapper
 
-        return _cache[args]
-    return wrapper
+    if _func is None:
+        return caching_decorator
+    else:
+        return caching_decorator(_func)
 
 
-@caching_decorator
+@cache
 def funct(*args):
     return len(args)
 

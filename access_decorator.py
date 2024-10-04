@@ -1,17 +1,39 @@
-# Создайте декоратор access_control, который ограничивает доступ к функции на основе переданных ролей пользователя.
-# Декоратор должен принимать аргументы, определяющие допустимые роли (например, @access_control(roles=['admin', 'moderator'])). Требования:
+from contextlib import contextmanager
+from functools import wraps
+from os import environ
 
-# Если текущий пользователь имеет одну из допустимых ролей, функция выполняется.
-# Если нет, выбрасывается исключение PermissionError с соответствующим сообщением.
-# Реализуйте механизм определения текущей роли пользователя. Для целей задания можно использовать глобальную переменную или контекстный менеджер.
+
+@contextmanager
+def manage_roles(role):
+    environ["role"] = role
+    try:
+        yield environ["role"]
+    finally:
+        del environ["role"]
+
+
+class PermissionError(Exception):
+    ...
 
 
 def access_control(roles):
     def access_decorator(func):
+        @wraps(func)
         def access_wrapper(*args, **kwargs):
-            if "x" or "y" in roles:
-                return func(*args, **kwargs)
-            else:
-                raise Exception
+            if environ["role"] in roles:
+                    return func(*args, **kwargs)
+            raise PermissionError("Access denied")
         return access_wrapper
     return access_decorator
+
+
+@access_control(roles=["admin", "moderator"])
+def admin_func(*args):
+    return str(args)
+
+
+with manage_roles("admin") as admin_role:
+    admin_func("foo")
+
+with manage_roles("student") as student_role:
+    admin_func("foo")

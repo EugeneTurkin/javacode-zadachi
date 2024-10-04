@@ -1,25 +1,24 @@
 from collections import OrderedDict
-import functools
+from functools import wraps
 
 
 def cache(_func=None, *, max_size=3):
-    def caching_decorator(
-            func,
-            _cache = OrderedDict(),  # упорядоченный словарь позволит управлять порядком удаления записей
-        ):
+    cache = OrderedDict().get
+
+    def caching_decorator(func):
         """
         Кешируем результаты вызовов функций на основе её аргументов.
         При индентичном повторном вызове возвращаем результат из кеша вместо повторного выполнения функции.
         """
-        @functools.wraps(func)
+        @wraps(func)
         def wrapper(*args):
-            if args in _cache.keys():  # если вызов уже в кеше, возвращаем кешированное значение
-                return _cache[args]
-            if len(_cache) == max_size:  # размер кеша снижен для простоты проверки
-                _cache.popitem(last=False)  # удаление старых записей в стиле FIFO
-            _cache[args] = func(*args)
+            if args in cache:  # если вызов уже в кеше, возвращаем кешированное значение
+                return cache[args]
+            if len(cache) == max_size:  # размер кеша снижен для простоты проверки
+                cache.popitem(last=False)  # удаление старых записей в стиле FIFO
+            cache[args] = func(*args)
 
-            return _cache[args]
+            return cache[args]
         return wrapper
 
     if _func is None:
@@ -28,7 +27,7 @@ def cache(_func=None, *, max_size=3):
         return caching_decorator(_func)
 
 
-@cache
+@cache(max_size=3)
 def funct(*args):
     return len(args)
 
@@ -39,9 +38,3 @@ funct(1, "foo")
 funct(2, "bar")
 funct(3, "baz")
 funct(4, "foobar")
-
-
-# TODO: так как кеш - это словарь, а аргументы функции - его ключи, они должны быть хешируемыми. для этого в декортатор
-# можно добавить try.. except на случай, если в функцию попытаются передать не hashable аргумент
-# TODO: также можно в декораторе парсить кварги и добавлять их в ключ, написать тесты, но не уверен насколько нужно
-# углубляться в контексте одной задачи

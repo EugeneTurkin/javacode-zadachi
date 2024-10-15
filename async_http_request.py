@@ -1,7 +1,9 @@
-import aiohttp
 import asyncio
 import json
+from math import ceil
 from typing import Any
+
+import aiohttp
 
 
 urls = [
@@ -9,6 +11,7 @@ urls = [
     "https://httpbin.org/status/500",
     "https://httpbin.org/status/404",
     "https://httpbin.org/status/422",
+    "https://nonexistent.url",
     "https://nonexistent.url",
 ]
 
@@ -26,11 +29,26 @@ async def get_status(session: aiohttp.ClientSession, url: str, s: asyncio.Semaph
             return {"url": url, "status_code": 0,}
 
 
+def limit_coros(urls: list[str], limit: int):
+    start = 0
+    end = limit
 
-async def fetch_urls(urls: list[str], file_path: str) -> None:
-    s = asyncio.Semaphore(5)
+    cycles_count = ceil(len(urls) / limit)
+
+    for _ in range(cycles_count):
+        yield urls[start:end]
+        start += limit
+        end += limit
+
+
+async def fetch_urls(urls: list[str], file_path: str, limit: int) -> None:
+    s = asyncio.Semaphore(limit)
+    results = []
+
     async with aiohttp.ClientSession() as session:
-        results = await asyncio.gather(*[get_status(session, url, s) for url in urls], return_exceptions=True)
+        for batch in limit_coros(urls, 5):
+            for result in await asyncio.gather(*[get_status(session, url, s) for url in batch], return_exceptions=True):
+                results.append(result)
 
     with open(file_path, "w") as resultfile:
         for item in results:
@@ -38,7 +56,4 @@ async def fetch_urls(urls: list[str], file_path: str) -> None:
 
 
 if __name__ == '__main__':
-    from time import time  # оставил таймер для удобства проверки
-    t = time()
-    asyncio.run(fetch_urls(urls, './results.jsonl'))
-    print(time() - t)
+    asyncio.run(fetch_urls(urls, './results.jsonl', 5))

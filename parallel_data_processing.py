@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 from json import dumps
 from multiprocessing import cpu_count, Pool, Process, Queue
 from prettytable import PrettyTable
+from queue import Empty
 from random import randint
 from time import time
 
@@ -20,16 +21,13 @@ def factorial(n: int) -> int:
     return result
 
 
-def worker(process_id: int, input_queue: Queue, output_queue: Queue):
+def worker(input_queue: Queue):
     while True:
         try:
-            num = input_queue.get(timeout=1)
-            if num is None:
-                break
+            num = input_queue.get(timeout=0.1)
             result = factorial(num)
-            output_queue.put((num, result))
-        except Exception as e:
-            print(f"Error in process {process_id}: {str(e)}")
+        except Empty:
+            break
 
 
 def main(result_path: str) -> None:
@@ -58,24 +56,21 @@ def main(result_path: str) -> None:
     # реализация через процессы с очередями
     curr_time = time()
     input_queue = Queue()
-    output_queue = Queue()
+    numbers = generate_data(dataset_size)
 
-    processes: list[Process] = []
-    for i in range(cpu_count()):
-        p = Process(target=worker, args=(i, input_queue, output_queue))
-        processes.append(p)
-        p.start()
-
-    for num in data:
+    for num in numbers:
         input_queue.put(num)
 
+    processes: list[Process] = []
     for _ in range(cpu_count()):
-        input_queue.put(None)
+        p = Process(target=worker, args=(input_queue,))
+        processes.append(p)
+        p.start()
 
     for p in processes:
         p.join()
     process_time = time() - curr_time
-    results.append({"Process pool execution": process_time})
+    results.append({"Process + queue execution": process_time})
 
     # принтим таблицу
     table = PrettyTable()

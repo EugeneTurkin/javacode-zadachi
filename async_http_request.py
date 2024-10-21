@@ -1,7 +1,5 @@
 import asyncio
 import json
-from math import ceil
-from typing import Any
 
 import aiohttp
 
@@ -12,48 +10,46 @@ urls = [
     "https://httpbin.org/status/404",
     "https://httpbin.org/status/422",
     "https://nonexistent.url",
-    "https://nonexistent.url",
 ]
 
 
-async def get_status(session: aiohttp.ClientSession, url: str, s: asyncio.Semaphore) -> dict[str, Any]:
-    async with s:
-        try:
-            async with session.get(url) as resp:
-                value = {
-                    "url": url,
-                    "status_code": resp.status,
-                }
-                return value
-        except:
-            return {"url": url, "status_code": 0,}
+async def producer(queue, urls):
+    for url in urls:
+        await queue.put(url)
 
 
-def limit_coros(urls: list[str], limit: int):
-    start = 0
-    end = limit
+async def consumer(queue, file_path):
+    with open(file_path, "a") as f:
+        while True:
+            url = await queue.get()
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url) as resp:
+                        data = {"url": url, "status_code": resp.status,}
+            except Exception as e:
+                data = {"url": url, "status_code": 0,}
+            finally:
+                queue.task_done()
 
-    cycles_count = ceil(len(urls) / limit)
-
-    for _ in range(cycles_count):
-        yield urls[start:end]
-        start += limit
-        end += limit
+            f.write(json.dumps(data) + "\n")
 
 
-async def fetch_urls(urls: list[str], file_path: str, limit: int) -> None:
-    s = asyncio.Semaphore(limit)
-    results = []
+async def main(urls: list[str], file_path: str, limit: int):
+    queue = asyncio.Queue()
 
-    async with aiohttp.ClientSession() as session:
-        for batch in limit_coros(urls, 5):
-            for result in await asyncio.gather(*[get_status(session, url, s) for url in batch], return_exceptions=True):
-                results.append(result)
+    produce = asyncio.create_task(producer(queue, urls))
+    
+    consumers = [asyncio.create_task(consumer(queue, file_path)) for _ in range(limit)]
+    
+    await produce
 
-    with open(file_path, "w") as resultfile:
-        for item in results:
-            resultfile.write(json.dumps(item) + "\n")
+    await queue.join()
 
 
 if __name__ == '__main__':
-    asyncio.run(fetch_urls(urls, './results.jsonl', 5))
+    from time import time
+    ts = time()
+
+    asyncio.run(main(urls, './results.jsonl', 5))
+
+    print(time() - ts)
